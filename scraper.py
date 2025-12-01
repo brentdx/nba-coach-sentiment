@@ -1,15 +1,14 @@
 """
 NBA Coach Post-Game Press Conference Transcript Scraper
 
-This script fetches coach post-game press conference videos from NBA team channels
-and downloads their transcripts automatically.
+Scrapes coach postgame interviews from @basketman2023 YouTube channel.
 
 Requirements:
     pip install google-api-python-client youtube-transcript-api python-dotenv
 
 Setup:
     1. Get a YouTube Data API key from Google Cloud Console
-    2. Create a .env file with: YOUTUBE_API_KEY=your_key_here
+    2. Set YOUTUBE_API_KEY environment variable or create .env file
 """
 
 import os
@@ -36,58 +35,17 @@ YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 DATABASE_PATH = Path(__file__).parent / "transcripts.db"
 TRANSCRIPTS_DIR = Path(__file__).parent / "transcripts"
 
-# NBA Team YouTube Channel IDs (official team channels)
-NBA_CHANNELS = {
-    "Atlanta Hawks": "UCLlm1JKsKzxkRFBGJb7Llvg",
-    "Boston Celtics": "UCL74l8G6x2rkp2LEQQmqkKQ",
-    "Brooklyn Nets": "UCt5qEcfzMO8zSJmQ8z4Mzvg",
-    "Charlotte Hornets": "UC4w4L1ng2x11qVXx3mbOaOg",
-    "Chicago Bulls": "UCPZn95U8HEFv0S9qQ71WFXQ",
-    "Cleveland Cavaliers": "UC5QDBVcQQG5xkLqvpHdqMwQ",
-    "Dallas Mavericks": "UC3CjG-A1HclF4bDDVVXV9HQ",
-    "Denver Nuggets": "UC6UJvA79c94-G19GyLH6wKQ",
-    "Detroit Pistons": "UCCEywvPd2oRl-pEoqdmYPBw",
-    "Golden State Warriors": "UCgoA_SJfNq2C3ys5eKk6UjA",
-    "Houston Rockets": "UCZQTy6KWXm26hLLEzB2vCYg",
-    "Indiana Pacers": "UC6DShFDlB2jLveLz0hWzXJw",
-    "LA Clippers": "UCDkNPHYLTJPWQRmzKpz5iLA",
-    "Los Angeles Lakers": "UC8CSt-oVqy8pUAoKSApTxQw",
-    "Memphis Grizzlies": "UCVdvtuNWMHFHLfSdwJsKI2Q",
-    "Miami Heat": "UCqQo7ewe87aYAe7ub5UqXMw",
-    "Milwaukee Bucks": "UCuDQp9jUqTpfT1fvBMypqFA",
-    "Minnesota Timberwolves": "UC6nqVWoR1bHhYVjA-jMfTHg",
-    "New Orleans Pelicans": "UCYm3MgLIQUW-vHiF3FgdOrQ",
-    "New York Knicks": "UC-_EBZ0gHPR_Ej2hE4tDCiw",
-    "Oklahoma City Thunder": "UC8vjTUzwL6tV0sN0QeITn3A",
-    "Orlando Magic": "UCUmQ0T9MNqMVRVXFGkOQ5SQ",
-    "Philadelphia 76ers": "UC4SUDuZG4WPv19T_3rdQJmA",
-    "Phoenix Suns": "UCxsM6HIFNfbA5VXmXRVIaJA",
-    "Portland Trail Blazers": "UCYO7LlrDkGlZNrMvBrvhq2g",
-    "Sacramento Kings": "UCpVNUV9XnNmE4Fva7yGzw3w",
-    "San Antonio Spurs": "UC5nA9GCqAZJu8J_mMh8RLgg",
-    "Toronto Raptors": "UCL8Nwz4h5ChsGwxQT9sZ8Xg",
-    "Utah Jazz": "UC4B1YTLm6QPWvB8DjyW3CjA",
-    "Washington Wizards": "UCw5_mFSVHwNLz2CbZ35j8xw",
-    # Also include the main NBA channel
-    "NBA": "UCWJ2lWNubArHWmf3FIHbfcQ",
-}
+# The channel that has all coach interviews
+# @basketman2023 - we'll resolve the channel ID on first run
+CHANNEL_HANDLE = "@basketman2023"
+CHANNEL_ID = None  # Will be resolved dynamically
 
-# Keywords to identify coach post-game press conferences
-POSTGAME_KEYWORDS = [
-    "postgame",
-    "post-game",
-    "post game",
-    "press conference",
-    "presser",
-    "after the game",
-    "coach interview",
-]
-
-# Current NBA head coaches (2024-25 season) - update as needed
+# Current NBA head coaches (2024-25 season)
 NBA_COACHES = [
     "Quin Snyder",
     "Joe Mazzulla",
     "Jordi Fernández",
+    "Jordi Fernandez",
     "Charles Lee",
     "Billy Donovan",
     "Kenny Atkinson",
@@ -99,23 +57,39 @@ NBA_COACHES = [
     "Ime Udoka",
     "Rick Carlisle",
     "Tyronn Lue",
+    "Ty Lue",
     "JJ Redick",
     "Taylor Jenkins",
     "Erik Spoelstra",
+    "Spoelstra",
     "Doc Rivers",
     "Chris Finch",
     "Willie Green",
     "Tom Thibodeau",
+    "Thibs",
+    "Thibodeau",
     "Mark Daigneault",
     "Jamahl Mosley",
     "Nick Nurse",
     "Mike Budenholzer",
+    "Budenholzer",
     "Chauncey Billups",
     "Mike Brown",
     "Gregg Popovich",
+    "Pop",
+    "Popovich",
     "Darko Rajaković",
+    "Darko Rajakovic",
     "Will Hardy",
     "Brian Keefe",
+    # Interim / recent changes
+    "Griff Aldrich",
+    "Kevin Young",
+    "Mazzulla",
+    "Kerr",
+    "Kidd",
+    "Carlisle",
+    "Nurse",
 ]
 
 
@@ -145,7 +119,7 @@ def init_database():
     """)
     
     cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_channel_name ON videos(channel_name)
+        CREATE INDEX IF NOT EXISTS idx_coach_name ON videos(coach_name)
     """)
     
     conn.commit()
@@ -156,67 +130,104 @@ def get_youtube_service():
     """Create and return YouTube API service."""
     if not YOUTUBE_API_KEY:
         raise ValueError(
-            "YOUTUBE_API_KEY not found. Please set it in your .env file."
+            "YOUTUBE_API_KEY not found. Please set it in your .env file or environment."
         )
     return build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 
 
-def is_postgame_video(title: str, description: str = "") -> bool:
-    """Check if a video is likely a coach post-game press conference."""
+def resolve_channel_id(youtube, handle: str) -> str:
+    """Resolve a YouTube handle (@username) to a channel ID."""
+    try:
+        # Try searching for the channel
+        request = youtube.search().list(
+            part="snippet",
+            q=handle,
+            type="channel",
+            maxResults=1,
+        )
+        response = request.execute()
+        
+        if response.get("items"):
+            channel_id = response["items"][0]["snippet"]["channelId"]
+            print(f"Resolved {handle} to channel ID: {channel_id}")
+            return channel_id
+        
+        # Alternative: try channels.list with forHandle
+        request = youtube.channels().list(
+            part="id",
+            forHandle=handle.replace("@", ""),
+        )
+        response = request.execute()
+        
+        if response.get("items"):
+            return response["items"][0]["id"]
+            
+    except Exception as e:
+        print(f"Error resolving channel handle: {e}")
+    
+    raise ValueError(f"Could not resolve channel handle: {handle}")
+
+
+def is_coach_interview(title: str, description: str = "") -> bool:
+    """Check if a video is a coach interview/press conference."""
     text = f"{title} {description}".lower()
     
-    # Must contain postgame-related keywords
-    has_postgame_keyword = any(kw in text for kw in POSTGAME_KEYWORDS)
+    # Check if any coach name is in the title
+    has_coach = any(coach.lower() in text for coach in NBA_COACHES)
     
-    # Should mention a coach or be clearly a press conference
-    has_coach_mention = any(coach.lower() in text for coach in NBA_COACHES)
-    is_press_conference = "press" in text or "presser" in text or "interview" in text
-    
-    # Exclude highlights, recap, and non-press content
-    exclude_keywords = [
-        "highlights",
-        "recap",
-        "top plays",
-        "best of",
-        "game winner",
-        "buzzer beater",
-        "dunk",
-        "player interview",  # We want coach interviews, not player
+    # Keywords that suggest it's a press conference / interview
+    interview_keywords = [
+        "postgame",
+        "post-game", 
+        "post game",
+        "press conference",
+        "presser",
+        "interview",
+        "talks",
+        "speaks",
+        "reacts",
+        "on the",
+        "after",
+        "following",
+        "discusses",
+        "media",
     ]
-    has_exclude = any(kw in text for kw in exclude_keywords)
+    has_interview_keyword = any(kw in text for kw in interview_keywords)
     
-    return has_postgame_keyword and (has_coach_mention or is_press_conference) and not has_exclude
+    # Must have coach name - that's our primary filter
+    return has_coach
 
 
 def extract_coach_name(title: str, description: str = "") -> Optional[str]:
-    """Try to extract the coach name from video title/description."""
+    """Extract the coach name from video title/description."""
     text = f"{title} {description}"
     for coach in NBA_COACHES:
         if coach.lower() in text.lower():
+            # Return the longer/full name version
             return coach
     return None
 
 
-def search_channel_videos(
+def get_channel_videos(
     youtube,
     channel_id: str,
-    channel_name: str,
     published_after: datetime,
     published_before: datetime,
+    max_results: int = 50,
 ) -> list[dict]:
-    """Search for postgame videos from a specific channel."""
+    """Get recent videos from a channel."""
     videos = []
     
     try:
+        # Search for videos from this channel
         request = youtube.search().list(
             part="snippet",
             channelId=channel_id,
-            publishedAfter=published_after.isoformat() + "Z",
-            publishedBefore=published_before.isoformat() + "Z",
-            maxResults=50,
+            publishedAfter=published_after.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            publishedBefore=published_before.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            maxResults=max_results,
             order="date",
             type="video",
-            q="postgame OR post-game OR press conference",
         )
         response = request.execute()
         
@@ -225,19 +236,57 @@ def search_channel_videos(
             title = snippet["title"]
             description = snippet.get("description", "")
             
-            if is_postgame_video(title, description):
+            # Filter for coach interviews
+            if is_coach_interview(title, description):
+                coach_name = extract_coach_name(title, description)
                 videos.append({
                     "video_id": item["id"]["videoId"],
                     "title": title,
-                    "channel_name": channel_name,
+                    "channel_name": snippet["channelTitle"],
                     "channel_id": channel_id,
                     "published_at": snippet["publishedAt"],
-                    "description": description[:500],  # Truncate long descriptions
-                    "coach_name": extract_coach_name(title, description),
+                    "description": description[:500],
+                    "coach_name": coach_name,
                 })
+                print(f"  ✓ [{coach_name}] {title[:50]}...")
+            
+        # Handle pagination if needed
+        next_page_token = response.get("nextPageToken")
+        while next_page_token and len(videos) < max_results:
+            request = youtube.search().list(
+                part="snippet",
+                channelId=channel_id,
+                publishedAfter=published_after.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                publishedBefore=published_before.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                maxResults=50,
+                order="date",
+                type="video",
+                pageToken=next_page_token,
+            )
+            response = request.execute()
+            
+            for item in response.get("items", []):
+                snippet = item["snippet"]
+                title = snippet["title"]
+                description = snippet.get("description", "")
+                
+                if is_coach_interview(title, description):
+                    coach_name = extract_coach_name(title, description)
+                    videos.append({
+                        "video_id": item["id"]["videoId"],
+                        "title": title,
+                        "channel_name": snippet["channelTitle"],
+                        "channel_id": channel_id,
+                        "published_at": snippet["publishedAt"],
+                        "description": description[:500],
+                        "coach_name": coach_name,
+                    })
+                    print(f"  ✓ [{coach_name}] {title[:50]}...")
+            
+            next_page_token = response.get("nextPageToken")
                 
     except Exception as e:
-        print(f"Error searching {channel_name}: {e}")
+        print(f"Error fetching videos: {e}")
     
     return videos
 
@@ -258,10 +307,10 @@ def fetch_transcript(video_id: str) -> Optional[str]:
         return full_transcript
         
     except (TranscriptsDisabled, NoTranscriptFound, VideoUnavailable) as e:
-        print(f"No transcript available for {video_id}: {e}")
+        print(f"      No transcript: {type(e).__name__}")
         return None
     except Exception as e:
-        print(f"Error fetching transcript for {video_id}: {e}")
+        print(f"      Transcript error: {e}")
         return None
 
 
@@ -269,12 +318,14 @@ def save_transcript(video_id: str, transcript: str, metadata: dict) -> str:
     """Save transcript to file and return the path."""
     TRANSCRIPTS_DIR.mkdir(exist_ok=True)
     
-    # Create filename from date and title
+    # Create filename from date, coach, and video ID
     date_str = metadata["published_at"][:10]
-    safe_title = re.sub(r'[^\w\s-]', '', metadata["title"])[:50]
+    coach = metadata.get("coach_name", "Unknown")
+    safe_coach = re.sub(r'[^\w\s-]', '', coach)[:20]
+    safe_title = re.sub(r'[^\w\s-]', '', metadata["title"])[:30]
     safe_title = re.sub(r'\s+', '_', safe_title)
     
-    filename = f"{date_str}_{safe_title}_{video_id}.json"
+    filename = f"{date_str}_{safe_coach}_{video_id}.json"
     filepath = TRANSCRIPTS_DIR / filename
     
     # Save both transcript and metadata
@@ -331,61 +382,66 @@ def save_video_metadata(video: dict, transcript_path: Optional[str], has_transcr
     conn.close()
 
 
-def run_daily_scrape(days_back: int = 1):
+def run_daily_scrape(days_back: int = 7):
     """
     Run the daily scrape job.
     
     Args:
-        days_back: Number of days to look back for videos (default 1 for daily job)
+        days_back: Number of days to look back for videos
     """
-    print(f"Starting NBA postgame transcript scrape at {datetime.now()}")
+    print(f"\n{'='*60}")
+    print(f"NBA Coach Postgame Transcript Scraper")
+    print(f"Source: {CHANNEL_HANDLE}")
+    print(f"Started: {datetime.now()}")
+    print(f"{'='*60}\n")
     
     init_database()
     youtube = get_youtube_service()
+    
+    # Resolve channel ID from handle
+    print(f"Resolving channel ID for {CHANNEL_HANDLE}...")
+    channel_id = resolve_channel_id(youtube, CHANNEL_HANDLE)
     
     # Set date range
     now = datetime.utcnow()
     published_before = now
     published_after = now - timedelta(days=days_back)
     
-    print(f"Searching for videos from {published_after.date()} to {published_before.date()}")
+    print(f"\nSearching for videos from {published_after.date()} to {published_before.date()}")
+    print(f"Filtering for coach interviews...\n")
     
-    all_videos = []
+    # Get videos
+    videos = get_channel_videos(
+        youtube,
+        channel_id,
+        published_after,
+        published_before,
+        max_results=100,
+    )
     
-    # Search each NBA channel
-    for channel_name, channel_id in NBA_CHANNELS.items():
-        print(f"Searching {channel_name}...")
-        videos = search_channel_videos(
-            youtube,
-            channel_id,
-            channel_name,
-            published_after,
-            published_before,
-        )
-        all_videos.extend(videos)
-        print(f"  Found {len(videos)} potential postgame videos")
+    print(f"\n{'='*60}")
+    print(f"Found {len(videos)} coach interview videos")
+    print(f"{'='*60}\n")
     
-    # Deduplicate by video ID
-    seen_ids = set()
-    unique_videos = []
-    for video in all_videos:
-        if video["video_id"] not in seen_ids:
-            seen_ids.add(video["video_id"])
-            unique_videos.append(video)
-    
-    print(f"\nTotal unique videos found: {len(unique_videos)}")
+    if not videos:
+        print("No new coach interviews found in date range.")
+        return 0
     
     # Process each video
     new_transcripts = 0
-    for video in unique_videos:
+    skipped = 0
+    no_transcript = 0
+    
+    for video in videos:
         video_id = video["video_id"]
         
         # Skip if already processed
         if video_exists(video_id):
-            print(f"  Skipping {video_id} (already processed)")
+            print(f"  [SKIP] Already have: {video['title'][:50]}...")
+            skipped += 1
             continue
         
-        print(f"  Processing: {video['title'][:60]}...")
+        print(f"  [NEW] {video['title'][:55]}...")
         
         # Fetch transcript
         transcript = fetch_transcript(video_id)
@@ -394,12 +450,18 @@ def run_daily_scrape(days_back: int = 1):
             transcript_path = save_transcript(video_id, transcript, video)
             save_video_metadata(video, transcript_path, has_transcript=True)
             new_transcripts += 1
-            print(f"    ✓ Saved transcript ({len(transcript)} chars)")
+            print(f"      ✓ Saved ({len(transcript):,} chars)")
         else:
             save_video_metadata(video, None, has_transcript=False)
-            print(f"    ✗ No transcript available")
+            no_transcript += 1
     
-    print(f"\nScrape complete! New transcripts saved: {new_transcripts}")
+    print(f"\n{'='*60}")
+    print(f"SCRAPE COMPLETE")
+    print(f"  New transcripts: {new_transcripts}")
+    print(f"  Skipped (existing): {skipped}")
+    print(f"  No transcript available: {no_transcript}")
+    print(f"{'='*60}\n")
+    
     return new_transcripts
 
 
@@ -420,30 +482,16 @@ def backfill(start_date: str, end_date: str):
     init_database()
     youtube = get_youtube_service()
     
-    all_videos = []
+    # Resolve channel
+    channel_id = resolve_channel_id(youtube, CHANNEL_HANDLE)
     
-    for channel_name, channel_id in NBA_CHANNELS.items():
-        print(f"Searching {channel_name}...")
-        videos = search_channel_videos(
-            youtube,
-            channel_id,
-            channel_name,
-            start,
-            end,
-        )
-        all_videos.extend(videos)
+    # Get all videos in range
+    videos = get_channel_videos(youtube, channel_id, start, end, max_results=500)
     
-    # Dedupe and process
-    seen_ids = set()
-    unique_videos = []
-    for video in all_videos:
-        if video["video_id"] not in seen_ids:
-            seen_ids.add(video["video_id"])
-            unique_videos.append(video)
+    print(f"\nFound {len(videos)} coach interviews to process")
     
-    print(f"\nFound {len(unique_videos)} unique videos to process")
-    
-    for video in unique_videos:
+    new_count = 0
+    for video in videos:
         video_id = video["video_id"]
         
         if video_exists(video_id):
@@ -455,9 +503,12 @@ def backfill(start_date: str, end_date: str):
         if transcript:
             transcript_path = save_transcript(video_id, transcript, video)
             save_video_metadata(video, transcript_path, has_transcript=True)
+            new_count += 1
             print(f"    ✓ Saved")
         else:
             save_video_metadata(video, None, has_transcript=False)
+    
+    print(f"\nBackfill complete! Added {new_count} new transcripts.")
 
 
 if __name__ == "__main__":
@@ -473,8 +524,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--days",
         type=int,
-        default=1,
-        help="Number of days to look back (default: 1)",
+        default=7,
+        help="Number of days to look back (default: 7)",
     )
     
     args = parser.parse_args()
