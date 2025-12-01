@@ -36,9 +36,9 @@ DATABASE_PATH = Path(__file__).parent / "transcripts.db"
 TRANSCRIPTS_DIR = Path(__file__).parent / "transcripts"
 
 # The channel that has all coach interviews
-# @basketman2023 - we'll resolve the channel ID on first run
+# @basketman2023
 CHANNEL_HANDLE = "@basketman2023"
-CHANNEL_ID = None  # Will be resolved dynamically
+CHANNEL_ID = "UCmwOTk7ROGKohtHTWj"  # Hardcoded to save API quota
 
 # Current NBA head coaches (2024-25 season)
 NBA_COACHES = [
@@ -398,9 +398,9 @@ def run_daily_scrape(days_back: int = 7):
     init_database()
     youtube = get_youtube_service()
     
-    # Resolve channel ID from handle
-    print(f"Resolving channel ID for {CHANNEL_HANDLE}...")
-    channel_id = resolve_channel_id(youtube, CHANNEL_HANDLE)
+    # Use hardcoded channel ID
+    channel_id = CHANNEL_ID
+    print(f"Using channel ID: {channel_id}")
     
     # Set date range
     now = datetime.utcnow()
@@ -482,8 +482,8 @@ def backfill(start_date: str, end_date: str):
     init_database()
     youtube = get_youtube_service()
     
-    # Resolve channel
-    channel_id = resolve_channel_id(youtube, CHANNEL_HANDLE)
+    # Use hardcoded channel ID
+    channel_id = CHANNEL_ID
     
     # Get all videos in range
     videos = get_channel_videos(youtube, channel_id, start, end, max_results=500)
