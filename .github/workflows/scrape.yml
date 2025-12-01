@@ -38,14 +38,11 @@ jobs:
           else
             python sentiment_analysis.py --analyze
           fi
-          
+
       - name: Commit and push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.email "action@github.com"
           git config user.name "GitHub Action"
-          git pull --rebase origin main
           git add -A
-          git diff --staged --quiet || git commit -m "Daily scrape: $(date +%Y-%m-%d)"
-          git push https://x-access-token:${GITHUB_TOKEN}@github.com/brentdx/nba-coach-sentiment.git main
+          git commit -m "Daily scrape: $(date +%Y-%m-%d)" || echo "No changes to commit"
+          git push --force
