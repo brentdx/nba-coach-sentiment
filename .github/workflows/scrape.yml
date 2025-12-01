@@ -13,6 +13,12 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Pull latest changes
+        run: |
+          git pull origin main || true
       
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -27,7 +33,7 @@ jobs:
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         run: |
-          python scraper.py --days 2
+          python scraper.py --days 7
           
       - name: Run sentiment analysis
         env:
@@ -39,10 +45,15 @@ jobs:
             python sentiment_analysis.py --analyze
           fi
           
-      - name: Commit new data
+      - name: Generate report
+        run: |
+          python sentiment_analysis.py --report || true
+          
+      - name: Commit and push new data
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+          git pull origin main --rebase || true
           git add -A
           git diff --staged --quiet || git commit -m "Daily scrape: $(date +%Y-%m-%d)"
-          git push
+          git push origin main
