@@ -38,7 +38,7 @@ TRANSCRIPTS_DIR = Path(__file__).parent / "transcripts"
 # The channel that has all coach interviews
 # @basketman2023
 CHANNEL_HANDLE = "@basketman2023"
-CHANNEL_ID = "UCmwOTk7ROGKohtHTWj"  # Hardcoded to save API quota
+CHANNEL_ID = "UCmwOTk7ROGKohtHTWj-vAmQ"  # Hardcoded to save API quota
 
 # Current NBA head coaches (2024-25 season)
 NBA_COACHES = [
