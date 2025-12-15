@@ -2,7 +2,9 @@ name: NBA Coach Sentiment Scraper
 
 on:
   schedule:
-    - cron: '0 7 * * *'
+    # 5 PM UTC = 9 AM Pacific (PST)
+    # This gives overnight games time to have captions ready
+    - cron: '0 17 * * *'
   workflow_dispatch:
 
 permissions:
