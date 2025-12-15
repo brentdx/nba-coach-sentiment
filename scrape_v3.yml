@@ -1,0 +1,50 @@
+name: NBA Coach Sentiment Scraper
+
+on:
+  schedule:
+    # 5 PM UTC = 9 AM Pacific (PST)
+    # This gives overnight games time to have captions ready
+    - cron: '0 17 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  scrape-and-analyze:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+          
+      - name: Run transcript scraper
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: python scraper.py --days 7
+          
+      - name: Run sentiment analysis
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            python sentiment_analysis.py --analyze --llm
+          else
+            python sentiment_analysis.py --analyze
+          fi
+
+      - name: Commit and push
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          git add -A
+          git commit -m "Daily scrape: $(date +%Y-%m-%d)" || echo "No changes to commit"
+          git push --force
